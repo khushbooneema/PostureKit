@@ -1,29 +1,29 @@
 import SwiftUI
 
 // LiveAnalysisView is the root screen of the app.
-// It composites three layers in a ZStack:
-//   1. CameraPreviewView     — live camera feed (bottom)
-//   2. SkeletonOverlayView   — skeleton drawn over the feed
-//   3. Warning banner + FPS counter — user guidance and debug info
+// It reads exclusively from LiveViewModel — unaware that CameraManager
+// and PostureAnalyzer exist as separate objects underneath.
 //
-// CameraManager is the single source of truth — it owns the session,
-// publishes currentPose and averageConfidence. All layers read from the same instance.
+// ZStack layers (bottom to top):
+//   1. CameraPreviewView   — live camera feed
+//   2. SkeletonOverlayView — skeleton drawn over the feed
+//   3. Warning banner + FPS counter — user guidance and debug info
 
 struct LiveAnalysisView: View {
 
-    @StateObject private var camera = CameraManager()
+    @StateObject private var viewModel = LiveViewModel()
 
     var body: some View {
         ZStack {
             // Layer 1: live camera feed
-            CameraPreviewView(session: camera.captureSession)
+            CameraPreviewView(session: viewModel.captureSession)
                 .ignoresSafeArea()
 
             // Layer 2: skeleton overlay
-            SkeletonOverlayView(pose: camera.currentPose)
+            SkeletonOverlayView(pose: viewModel.currentPose)
                 .ignoresSafeArea()
 
-            // Layer 3: warnings + debug FPS counter
+            // Layer 3: warnings + debug counter
             VStack {
                 HStack(alignment: .top) {
                     if let message = warningMessage {
@@ -47,13 +47,13 @@ struct LiveAnalysisView: View {
         }
     }
 
-    // MARK: - Warning Logic
+    // MARK: - Warning logic
 
     private var warningMessage: String? {
-        guard camera.currentPose.isValid else {
+        guard viewModel.currentPose.isValid else {
             return "Step back so your full body is visible"
         }
-        if camera.averageConfidence < 0.4 {
+        if viewModel.averageConfidence < 0.4 {
             return "Move to better lighting"
         }
         return nil
