@@ -4,7 +4,7 @@ import SwiftUI
 struct PostureKitApp: App {
     var body: some Scene {
         WindowGroup {
-            LiveAnalysisView()
+            PostureWizardView()
         }
     }
 }

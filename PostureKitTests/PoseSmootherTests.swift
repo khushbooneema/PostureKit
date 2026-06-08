@@ -109,7 +109,7 @@ final class PoseSmootherTests: XCTestCase {
         var poseWithJoint = BodyPose()
         poseWithJoint.leftShoulder = makeJoint(x: 0.4, y: 0.4)
 
-        var poseWithoutJoint = BodyPose()
+        let poseWithoutJoint = BodyPose()
         // leftShoulder is nil in this pose
 
         _ = smoother.smooth(poseWithJoint)

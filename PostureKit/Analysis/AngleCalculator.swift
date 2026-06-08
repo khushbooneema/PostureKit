@@ -54,20 +54,39 @@ enum AngleCalculator {
         return acos(cosAngle) * (180.0 / .pi)
     }
 
-    // MARK: - horizontalOffset
+    // MARK: - craniovertebralAngle
 
-    // Returns the absolute horizontal distance between two points in normalised space.
-    // Used for Forward Head Posture: measures how far the ear is in front of the shoulder.
+    // Returns the Craniovertebral Angle (CVA) in degrees.
     //
-    // Returns a value in the range 0.0–1.0 where:
-    //   0.0 = ear directly above shoulder (ideal alignment)
-    //   0.08 = ear ~8% of frame width forward of shoulder (moderate FHP threshold)
-    //   0.14 = ear ~14% of frame width forward (severe FHP threshold)
+    // Clinical definition:
+    //   The angle formed between a horizontal line through C7 (approximated by the
+    //   shoulder keypoint) and the line from C7 up to the tragus of the ear.
+    //   A neutral spine has the ear directly above the shoulder — CVA ≈ 90°.
+    //   As the head protrudes forward, the ear shifts in front of the shoulder,
+    //   rotating the shoulder→ear vector toward horizontal and reducing the CVA.
     //
-    // Note: Vision Y increases upward, but X is standard left-to-right.
-    // Horizontal offset does not need a coordinate flip.
-    static func horizontalOffset(_ a: CGPoint, _ b: CGPoint) -> Double {
-        abs(Double(a.x - b.x))
+    // Why this is better than horizontal offset:
+    //   Horizontal offset is a raw pixel distance that changes with how far the
+    //   subject stands from the camera. CVA is a ratio (rise/run = angle), so it
+    //   stays consistent regardless of camera distance or subject height.
+    //
+    // Input coordinate space — Vision normalised (0–1), origin bottom-left, Y up:
+    //   ear.y > shoulder.y in all normal postures (ear is higher on the body).
+    //   We take abs(dx) so the formula works for both left- and right-facing profiles.
+    //
+    // Reference thresholds (clinical literature):
+    //   ≥ 50°  → normal
+    //   45–49° → mild FHP
+    //   35–44° → moderate FHP
+    //   < 35°  → severe FHP
+    static func craniovertebralAngle(ear: CGPoint, shoulder: CGPoint) -> Double {
+        let dx = abs(Double(ear.x - shoulder.x))   // horizontal separation
+        let dy = Double(ear.y - shoulder.y)         // vertical separation (positive = ear above shoulder)
+
+        // If the two points are coincident Vision detected a degenerate pose — return neutral.
+        guard dx > 0 || dy > 0 else { return 90 }
+
+        return atan2(dy, dx) * (180.0 / .pi)
     }
 }
 

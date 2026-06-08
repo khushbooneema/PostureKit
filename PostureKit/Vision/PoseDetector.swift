@@ -1,18 +1,24 @@
 import Vision
 import AVFoundation
+import UIKit
 
 // PoseDetector is the only type in the app that runs Vision inference.
-// It takes a raw camera frame (CMSampleBuffer) and returns a clean BodyPose.
+// It takes either a live camera frame (CMSampleBuffer) or a still photo (UIImage)
+// and returns a clean BodyPose.
 //
-// Threading: detect(in:) is called from CameraManager's processingQueue (background thread).
-// It must never be called on the main thread — Vision inference blocks for ~10–30ms per frame.
+// Threading: both detect(in:) overloads block the calling thread for ~10–300ms.
+// The CMSampleBuffer path is called from CameraManager's background processingQueue.
+// The UIImage path is called from a detached Task in PhotoCaptureViewModel.
+// Neither path may be called on the main thread.
 
 class PoseDetector {
 
-    // The request is created once and reused across every frame.
-    // VNDetectHumanBodyPoseRequest is designed for reuse — it caches internal state
-    // that makes subsequent calls faster. Do not recreate it per frame.
+    // The request is created once and reused across every call.
+    // VNDetectHumanBodyPoseRequest caches internal state that makes subsequent
+    // calls faster. Do not recreate it per frame or per photo.
     private let request = VNDetectHumanBodyPoseRequest()
+
+    // MARK: - Live video path (CameraManager)
 
     // Takes a single camera frame and returns a BodyPose if a person is detected.
     // Returns nil if no person is in frame, if the pixel buffer is unavailable,
@@ -41,5 +47,40 @@ class PoseDetector {
         guard let observation = request.results?.first else { return nil }
 
         return BodyPose(from: observation)
+    }
+
+    // MARK: - Still photo path (PhotoCaptureManager)
+
+    // Takes a UIImage captured by AVCapturePhotoOutput and returns a BodyPose.
+    // UIImage carries an imageOrientation property that describes the transform needed
+    // to display it upright. cgImage holds the raw pixel data without that transform applied,
+    // so we must translate the UIImage orientation into a CGImagePropertyOrientation and
+    // pass it to Vision — otherwise keypoint coordinates are rotated/mirrored incorrectly.
+    func detect(in image: UIImage) -> BodyPose? {
+        guard let cgImage = image.cgImage else { return nil }
+
+        let orientation = cgImageOrientation(from: image.imageOrientation)
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
+        try? handler.perform([request])
+
+        guard let observation = request.results?.first else { return nil }
+        return BodyPose(from: observation)
+    }
+
+    // Translates UIImage.Orientation into the equivalent CGImagePropertyOrientation.
+    // These two enums cover the same 8 orientations but use different raw value schemes
+    // — there is no built-in conversion, so we map them explicitly.
+    private func cgImageOrientation(from uiOrientation: UIImage.Orientation) -> CGImagePropertyOrientation {
+        switch uiOrientation {
+        case .up:            return .up
+        case .down:          return .down
+        case .left:          return .left
+        case .right:         return .right
+        case .upMirrored:    return .upMirrored
+        case .downMirrored:  return .downMirrored
+        case .leftMirrored:  return .leftMirrored
+        case .rightMirrored: return .rightMirrored
+        @unknown default:    return .up
+        }
     }
 }

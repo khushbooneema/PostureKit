@@ -21,7 +21,7 @@ import Combine
 class PostureAnalyzer: ObservableObject {
 
     @Published var currentIssues: [PostureIssue] = []
-    @Published var postureScore: Int = 100
+    @Published var postureScore: Int?
 
     // Rolling window for score smoothing — averages over the last N frames.
     // At 30fps, window=10 = 333ms of smoothing lag.
@@ -29,13 +29,62 @@ class PostureAnalyzer: ObservableObject {
     private var scoreHistory: [Int] = []
     private let scoreWindow = 10
 
-    // MARK: - FHP thresholds
-    // Named constants so threshold tuning (L2-018) has one place to change.
-    // Values are normalised (0–1): 0.08 = ear ~8% of frame width forward of shoulder.
-    // These are starting points — calibrate on a real device in L2-018.
-    private let fhpMildThreshold     = 0.04  // barely noticeable forward lean
-    private let fhpModerateThreshold = 0.08  // clearly visible, adds neck strain
-    private let fhpSevereThreshold   = 0.14  // significant forward head position
+    // MARK: - Single-shot analysis (photo capture flow)
+
+    // Runs angle-appropriate checks against a single pose and returns the results directly.
+    // Used by PhotoCaptureViewModel — no rolling window, no @Published side effects.
+    //
+    // Why angle-aware:
+    // CVA (craniovertebral angle) is a sagittal-plane measurement — it only works when
+    // the camera sees the person from the side. From a front-facing camera the ear sits
+    // directly above the shoulder in X regardless of FHP, so CVA always reads ~90° and
+    // gives a false "no issue" result. Running the wrong check on the wrong angle produces
+    // misleading scores, so each angle gets its own check list.
+    //
+    // Why no pose.isValid guard here:
+    // isValid requires ALL of leftShoulder + rightShoulder + leftHip + rightHip.
+    // In a side or back photo, one hip is often occluded and Vision drops it — isValid
+    // returns false and the entire analysis is skipped, giving a spurious 100 score.
+    // Each individual check already guards on the specific keypoints it needs, so letting
+    // them self-guard is both correct and more robust to partial occlusion.
+    // Returns issues, score, and the raw CVA angle (side view only — nil for front/back).
+    // The CVA angle is surfaced so the UI can show the user exactly where they land
+    // on the clinical threshold scale, even when posture is good (no issue produced).
+    func analyzeOnce(_ pose: BodyPose, for angle: CaptureAngle) -> (issues: [PostureIssue], score: Int, cvaAngle: Double?) {
+        var issues: [PostureIssue] = []
+        var cvaAngle: Double? = nil
+
+        switch angle {
+        case .side:
+            // CVA requires a side profile — the ear's forward displacement is visible
+            // as horizontal separation from the shoulder only in the sagittal plane.
+            let (issue, cva) = checkForwardHead(pose)
+            if let issue { issues.append(issue) }
+            cvaAngle = cva  // return even when posture is good, so UI can show "52° — Normal"
+
+        case .front:
+            // FHP via CVA does not apply here — forward displacement appears as depth
+            // (into/out of the camera), not horizontal offset, so CVA stays ~90°.
+            // Shoulder symmetry and hip symmetry checks will go here (future layers).
+            break
+
+        case .back:
+            // Spinal alignment and posterior shoulder symmetry checks go here (future layers).
+            break
+        }
+
+        let score = max(0, 100 - issues.reduce(0) { $0 + $1.severityScore })
+        return (issues, score, cvaAngle)
+    }
+
+    // MARK: - CVA thresholds (degrees)
+    // Craniovertebral Angle thresholds from clinical literature.
+    // A higher CVA is better — 90° means the ear is directly above the shoulder.
+    // Values below each threshold trigger the corresponding severity.
+    private let cvaNormalThreshold   = 50.0  // ≥ 50° = neutral, no issue
+    private let cvaMildThreshold     = 45.0  // 45–49° = mild FHP
+    private let cvaModerateThreshold = 35.0  // 35–44° = moderate FHP
+                                             // < 35°  = severe FHP
 
     // MARK: - Main analysis entry point
 
@@ -50,13 +99,13 @@ class PostureAnalyzer: ObservableObject {
         // Only run checks when we have a valid full-body pose.
         // isValid requires both shoulders and both hips — minimum geometry for analysis.
         guard pose.isValid else {
-            publishResults(issues: [], score: calculateScore(from: []))
             return
         }
 
         // Run active checks — append result if an issue was detected.
         // Other checks (shoulder, spinal, hip) added here in L2-010/011/012.
-        if let issue = checkForwardHead(pose) { issues.append(issue) }
+        let (issue, _) = checkForwardHead(pose)
+        if let issue { issues.append(issue) }
 
         publishResults(issues: issues, score: calculateScore(from: issues))
     }
@@ -89,47 +138,50 @@ class PostureAnalyzer: ObservableObject {
 
 extension PostureAnalyzer {
 
-    // Detects forward head posture by measuring the horizontal distance between
-    // the ear and the shoulder on the same side.
+    // Detects forward head posture using the Craniovertebral Angle (CVA).
     //
     // Clinical basis:
-    // A neutral spine has the ear directly above the shoulder in the coronal plane.
-    // When the head protrudes forward, the ear moves away from the shoulder horizontally.
-    // From a front-facing camera, this shows as an increased X-axis offset.
+    // CVA = the angle between a horizontal line through C7 (approximated by the
+    // shoulder keypoint) and the line from C7 up to the tragus of the ear.
+    // A neutral spine has the ear directly above the shoulder, giving CVA ≈ 90°.
+    // As the head protrudes forward, the ear shifts in front of the shoulder and
+    // the CVA decreases toward horizontal (0°).
     //
-    // Limitation: this camera angle captures the 2D projection of a 3D movement.
-    // True forward head posture is best measured from the side — but the horizontal
-    // offset from a front camera is a reliable proxy and good enough for V1.
-    private func checkForwardHead(_ pose: BodyPose) -> PostureIssue? {
+    // Why CVA over horizontal offset:
+    // Horizontal offset is a raw pixel distance — it grows when the subject stands
+    // closer to the camera even with perfect posture. CVA is a geometric angle
+    // (rise/run ratio), so it remains consistent regardless of distance or height.
+    //
+    // Best measured from a side-view photo (sagittal plane) where forward
+    // displacement is visible as horizontal separation in the image.
+    // Returns both the PostureIssue (nil if posture is good) and the raw CVA angle.
+    // The angle is always returned when keypoints are found — even for good posture —
+    // so the UI can display "52.3° — Normal" and show the user where they land on the scale.
+    private func checkForwardHead(_ pose: BodyPose) -> (issue: PostureIssue?, cvaAngle: Double?) {
 
-        // Prefer the left ear — fall back to right if left isn't detected.
-        // Using one ear is intentional: FHP is a bilateral issue, either ear
-        // relative to its same-side shoulder gives a valid measurement.
-        guard let ear = pose.leftEar ?? pose.rightEar else { return nil }
-
-        // Use the shoulder on the same side as the ear we selected.
-        // Comparing left ear to right shoulder would measure neck tilt, not FHP.
-        let shoulder: BodyPose.Joint?
-        if pose.leftEar != nil {
-            shoulder = pose.leftShoulder
+        // Prefer the ear/shoulder pair that Vision detected with higher confidence.
+        // Using one side is intentional: FHP is a bilateral pattern, either side
+        // relative to its same-side shoulder gives a valid CVA measurement.
+        let (ear, shoulder): (BodyPose.Joint, BodyPose.Joint)
+        if let leftEar = pose.leftEar, let leftShoulder = pose.leftShoulder {
+            (ear, shoulder) = (leftEar, leftShoulder)
+        } else if let rightEar = pose.rightEar, let rightShoulder = pose.rightShoulder {
+            (ear, shoulder) = (rightEar, rightShoulder)
         } else {
-            shoulder = pose.rightShoulder
-        }
-        guard let shoulder else { return nil }
-
-        let offset = AngleCalculator.horizontalOffset(ear.position, shoulder.position)
-
-        // Apply severity thresholds.
-        // These starting values are calibrated for a person 6–8 feet from the camera.
-        // Real-device tuning happens in L2-018 using the debug overlay.
-        if offset > fhpSevereThreshold {
-            return PostureIssue(type: .forwardHead, severity: .severe)
-        } else if offset > fhpModerateThreshold {
-            return PostureIssue(type: .forwardHead, severity: .moderate)
-        } else if offset > fhpMildThreshold {
-            return PostureIssue(type: .forwardHead, severity: .mild)
+            return (nil, nil)
         }
 
-        return nil
+        let cva = AngleCalculator.craniovertebralAngle(ear: ear.position, shoulder: shoulder.position)
+
+        // Lower CVA = worse posture. Thresholds from clinical literature.
+        if cva < cvaModerateThreshold {
+            return (PostureIssue(type: .forwardHead, severity: .severe), cva)
+        } else if cva < cvaMildThreshold {
+            return (PostureIssue(type: .forwardHead, severity: .moderate), cva)
+        } else if cva < cvaNormalThreshold {
+            return (PostureIssue(type: .forwardHead, severity: .mild), cva)
+        }
+
+        return (nil, cva)
     }
 }
