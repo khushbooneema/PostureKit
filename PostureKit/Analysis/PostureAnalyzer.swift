@@ -63,14 +63,22 @@ class PostureAnalyzer: ObservableObject {
             cvaAngle = cva  // return even when posture is good, so UI can show "52° — Normal"
 
         case .front:
-            // FHP via CVA does not apply here — forward displacement appears as depth
-            // (into/out of the camera), not horizontal offset, so CVA stays ~90°.
-            // Shoulder symmetry and hip symmetry checks will go here (future layers).
-            break
+            // From a front-facing camera, CVA reads ~90° regardless of FHP (the head
+            // protrudes in depth, not X). Instead we check:
+            //   • Shoulder height symmetry  — one shoulder raised
+            //   • Hip height symmetry       — lateral pelvic tilt / weight shift
+            //   • Trunk lateral tilt        — shoulder-to-hip axis angle from vertical
+            //   • Head tilt                 — ear height asymmetry (head rotated sideways)
+            if let issue = checkShoulderSymmetry(pose)   { issues.append(issue) }
+            if let issue = checkHipSymmetry(pose)        { issues.append(issue) }
+            if let issue = checkTrunkLateralTilt(pose)   { issues.append(issue) }
+            if let issue = checkHeadTilt(pose)           { issues.append(issue) }
 
         case .back:
-            // Spinal alignment and posterior shoulder symmetry checks go here (future layers).
-            break
+            // Same structural checks as front — ears unreliable from behind, so skip head tilt.
+            if let issue = checkShoulderSymmetry(pose)   { issues.append(issue) }
+            if let issue = checkHipSymmetry(pose)        { issues.append(issue) }
+            if let issue = checkTrunkLateralTilt(pose)   { issues.append(issue) }
         }
 
         let score = max(0, 100 - issues.reduce(0) { $0 + $1.severityScore })
@@ -137,6 +145,131 @@ class PostureAnalyzer: ObservableObject {
 // MARK: - Forward Head Posture check
 
 extension PostureAnalyzer {
+
+    // MARK: - Shoulder symmetry
+
+    // Detects one shoulder raised higher than the other.
+    // Ratio = vertical height difference / horizontal shoulder width.
+    // Normalising by shoulder width keeps the result consistent across camera distances.
+    //
+    // Thresholds (empirical — may need calibration per camera setup):
+    //   mild     > 0.08  (~1 cm raise visible at arm's length)
+    //   moderate > 0.15  (clearly visible shoulder hike)
+    //   severe   > 0.25  (obvious postural asymmetry)
+    private func checkShoulderSymmetry(_ pose: BodyPose) -> PostureIssue? {
+        guard let ls = pose.leftShoulder, let rs = pose.rightShoulder,
+              ls.isReliable, rs.isReliable else { return nil }
+
+        let ratio = AngleCalculator.symmetryRatio(a: ls.position, b: rs.position)
+
+        if ratio > 0.25 {
+            return PostureIssue(type: .shoulderImbalance, severity: .severe)
+        } else if ratio > 0.15 {
+            return PostureIssue(type: .shoulderImbalance, severity: .moderate)
+        } else if ratio > 0.08 {
+            return PostureIssue(type: .shoulderImbalance, severity: .mild)
+        }
+        return nil
+    }
+
+    // MARK: - Hip symmetry
+
+    // Detects one hip higher than the other (lateral pelvic tilt / weight shift).
+    // Uses the same normalised-ratio approach as shoulder symmetry.
+    private func checkHipSymmetry(_ pose: BodyPose) -> PostureIssue? {
+        guard let lh = pose.leftHip, let rh = pose.rightHip,
+              lh.isReliable, rh.isReliable else { return nil }
+
+        let ratio = AngleCalculator.symmetryRatio(a: lh.position, b: rh.position)
+
+        if ratio > 0.25 {
+            return PostureIssue(type: .hipImbalance, severity: .severe)
+        } else if ratio > 0.15 {
+            return PostureIssue(type: .hipImbalance, severity: .moderate)
+        } else if ratio > 0.08 {
+            return PostureIssue(type: .hipImbalance, severity: .mild)
+        }
+        return nil
+    }
+
+    // MARK: - Trunk lateral tilt (front + back views)
+
+    // Measures the angle of the trunk from vertical using the shoulder midpoint and hip midpoint.
+    // This is the clinically correct way to detect lateral trunk lean — it uses 4 joints
+    // instead of the nose proxy, and is robust to the person facing slightly off-axis.
+    //
+    // Requires both shoulders AND both hips to be reliably detected. In a pure side photo
+    // one hip is occluded and this check will silently return nil — that is intentional,
+    // since trunk tilt is not meaningful from a side angle anyway.
+    //
+    // Thresholds (degrees from vertical):
+    //   < 3°   — normal variation, no issue
+    //   3–6°   — mild lean
+    //   6–10°  — moderate lean
+    //   > 10°  — severe lean
+    private func checkTrunkLateralTilt(_ pose: BodyPose) -> PostureIssue? {
+        guard let ls = pose.leftShoulder,  ls.isReliable,
+              let rs = pose.rightShoulder, rs.isReliable,
+              let lh = pose.leftHip,       lh.isReliable,
+              let rh = pose.rightHip,      rh.isReliable else { return nil }
+
+        let shoulderMid = CGPoint(
+            x: (ls.position.x + rs.position.x) / 2,
+            y: (ls.position.y + rs.position.y) / 2
+        )
+        let hipMid = CGPoint(
+            x: (lh.position.x + rh.position.x) / 2,
+            y: (lh.position.y + rh.position.y) / 2
+        )
+
+        let tiltDegrees = AngleCalculator.trunkTiltAngle(shoulderMid: shoulderMid, hipMid: hipMid)
+
+        if tiltDegrees > 10 {
+            return PostureIssue(type: .spinalTilt, severity: .severe)
+        } else if tiltDegrees > 6 {
+            return PostureIssue(type: .spinalTilt, severity: .moderate)
+        } else if tiltDegrees > 3 {
+            return PostureIssue(type: .spinalTilt, severity: .mild)
+        }
+        return nil
+    }
+
+    // MARK: - Head tilt (front view only)
+
+    // Detects lateral head rotation — one ear is higher than the other.
+    // This is distinct from trunk tilt: the torso can be straight while the head
+    // is tilted sideways (cranial lateral flexion), and vice versa.
+    //
+    // Normalised by shoulder width so the result is consistent across camera distances.
+    // Only meaningful from the front — ears are not reliably detected from the back.
+    //
+    // Thresholds (ear height difference / shoulder width):
+    //   > 0.06 — mild tilt   (~half a head width deviation for an average person)
+    //   > 0.12 — moderate
+    //   > 0.20 — severe
+    private func checkHeadTilt(_ pose: BodyPose) -> PostureIssue? {
+        guard let le = pose.leftEar,       le.isReliable,
+              let re = pose.rightEar,      re.isReliable,
+              let ls = pose.leftShoulder,  ls.isReliable,
+              let rs = pose.rightShoulder, rs.isReliable else { return nil }
+
+        let shoulderWidth = abs(Double(ls.position.x) - Double(rs.position.x))
+        guard shoulderWidth > 0 else { return nil }
+
+        let earHeightDiff = abs(Double(le.position.y) - Double(re.position.y))
+        let ratio = earHeightDiff / shoulderWidth
+
+        if ratio > 0.20 {
+            return PostureIssue(type: .headTilt, severity: .severe)
+        } else if ratio > 0.12 {
+            return PostureIssue(type: .headTilt, severity: .moderate)
+        } else if ratio > 0.06 {
+            return PostureIssue(type: .headTilt, severity: .mild)
+        }
+        return nil
+    }
+
+    // MARK: - Forward Head Posture check
 
     // Detects forward head posture using the Craniovertebral Angle (CVA).
     //

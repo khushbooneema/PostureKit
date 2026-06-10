@@ -88,6 +88,74 @@ enum AngleCalculator {
 
         return atan2(dy, dx) * (180.0 / .pi)
     }
+
+    // MARK: - symmetryRatio
+
+    // Returns the vertical height asymmetry between two bilaterally symmetric joints,
+    // normalised by the horizontal distance between them (their "width").
+    //
+    // Use case: shoulder height symmetry, hip height symmetry.
+    //   a = leftShoulder, b = rightShoulder  →  ratio > 0 means one shoulder is raised
+    //
+    // Normalising by width makes the result scale-independent: a person standing close
+    // to the camera has a larger shoulder width AND a larger height difference in pixels,
+    // so the ratio stays consistent across distances.
+    //
+    // Returns 0 when a.x == b.x (degenerate case — no horizontal separation to normalise by).
+    static func symmetryRatio(a: CGPoint, b: CGPoint) -> Double {
+        let width = abs(Double(a.x) - Double(b.x))
+        guard width > 0 else { return 0 }
+        return abs(Double(a.y) - Double(b.y)) / width
+    }
+
+    // MARK: - lateralShiftRatio
+
+    // Returns how far `point` is shifted horizontally from the midpoint of `left` and `right`,
+    // normalised by the horizontal distance between left and right.
+    //
+    // Use case: head centering check — is the nose centred over the shoulder midpoint?
+    //   point = nose, left = leftShoulder, right = rightShoulder
+    //
+    // Sign convention: positive = point is to the right of midpoint (toward rightShoulder side).
+    // Callers that only care about magnitude should take abs() of the result.
+    //
+    // Returns 0 when left.x == right.x (degenerate case).
+    static func lateralShiftRatio(point: CGPoint, left: CGPoint, right: CGPoint) -> Double {
+        let midX   = (Double(left.x) + Double(right.x)) / 2
+        let width  = abs(Double(right.x) - Double(left.x))
+        guard width > 0 else { return 0 }
+        return (Double(point.x) - midX) / width
+    }
+
+    // MARK: - trunkTiltAngle
+
+    // Returns the lateral tilt of the trunk in degrees from vertical.
+    //
+    // Inputs: midpoints of the two shoulders and two hips (Vision normalised space,
+    // origin bottom-left, Y increases upward).
+    //
+    // How it works:
+    //   trunk vector = from hipMid → shoulderMid
+    //   dx = horizontal component  (non-zero when trunk is leaning sideways)
+    //   dy = vertical component    (positive = shoulders above hips, always true when standing)
+    //
+    //   angle from vertical = atan2(|dx|, dy)
+    //   Perfect upright stance = 0°
+    //   Leaning to either side increases the angle toward 90°
+    //
+    // Returns 0 when shoulderMid is below hipMid (degenerate / person lying down).
+    //
+    // Reference thresholds (empirical):
+    //   < 3°   — normal variation
+    //   3–6°   — mild lean (mild severity)
+    //   6–10°  — noticeable lean (moderate severity)
+    //   > 10°  — significant lean (severe severity)
+    static func trunkTiltAngle(shoulderMid: CGPoint, hipMid: CGPoint) -> Double {
+        let dx = Double(shoulderMid.x - hipMid.x)
+        let dy = Double(shoulderMid.y - hipMid.y)   // positive = shoulders above hips
+        guard dy > 0 else { return 0 }
+        return atan2(abs(dx), dy) * (180.0 / .pi)
+    }
 }
 
 // MARK: - Double clamping helper
