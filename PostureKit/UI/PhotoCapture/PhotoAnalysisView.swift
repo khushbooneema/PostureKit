@@ -138,6 +138,15 @@ struct PhotoAnalysisView: View {
                                 .transition(.opacity)
                         }
                     }
+
+                    // ML classifier opinion (FR-21) — shown for every angle when the
+                    // model produced a prediction. Runs independently of the rule-based
+                    // checks above, so agreement between the two is a good sign and
+                    // disagreement is worth a second look (debug view, FR-22).
+                    if let prediction = result.mlPrediction {
+                        mlPredictionRow(prediction)
+                            .transition(.opacity)
+                    }
                 }
 
                 Divider().padding(.top, 4)
@@ -184,6 +193,43 @@ struct PhotoAnalysisView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .cornerRadius(14)
+    }
+
+    // MARK: - ML prediction row (FR-21)
+
+    // Compact card showing the classifier's top label and its confidence.
+    // Styled differently from the rule-based check rows (brain icon, purple tint)
+    // so the user understands this is a model opinion, not a measured angle.
+    private func mlPredictionRow(_ prediction: MLPrediction) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "brain.head.profile")
+                .font(.title3)
+                .foregroundStyle(.purple)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("AI Classifier")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Text(prediction.label.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Confidence as a percentage chip
+            Text("\(Int(prediction.confidence * 100))%")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.purple)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.purple.opacity(0.12))
+                .cornerRadius(8)
         }
         .padding(14)
         .background(.ultraThinMaterial)

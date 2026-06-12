@@ -10,8 +10,13 @@ import Foundation
 // Coordinates: all joint positions are stored in raw Vision normalised space (0.0–1.0).
 // Origin is bottom-left, Y increases upward.
 // The Y-flip for SwiftUI rendering happens in CoordinateConverter, not here.
+//
+// nonisolated: the project defaults all types to MainActor isolation
+// (SWIFT_DEFAULT_ACTOR_ISOLATION). BodyPose is a pure value type that crosses
+// actor boundaries (built on Vision's background queue, read on main), so it
+// must opt out — otherwise referencing .empty from a detached task warns.
 
-struct BodyPose {
+nonisolated struct BodyPose {
 
     // A single detected keypoint on the body.
     // position  — normalised Vision coordinate (x: 0–1, y: 0–1, origin bottom-left)

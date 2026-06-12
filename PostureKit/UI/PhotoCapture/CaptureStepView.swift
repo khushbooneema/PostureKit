@@ -12,6 +12,9 @@ import SwiftUI
 struct CaptureStepView: View {
 
     @ObservedObject var viewModel: PhotoCaptureViewModel
+    // Binding to PostureWizardView — long-pressing the step indicator sets this
+    // true, which triggers the data-collection sheet in the parent.
+    @Binding var showDataCollection: Bool
 
     var body: some View {
         ZStack {
@@ -24,6 +27,14 @@ struct CaptureStepView: View {
             VStack {
                 stepIndicator
                     .padding(.top, 60)
+                    // 2-second long press on the step dots opens data collection.
+                    // Only available when idle (not mid-countdown or analyzing)
+                    // so the gesture can't fire at a bad time.
+                    .onLongPressGesture(minimumDuration: 2.0) {
+                        guard viewModel.phase == .capturing,
+                              viewModel.countdown == 0 else { return }
+                        showDataCollection = true
+                    }
 
                 Spacer()
 

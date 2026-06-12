@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A992673B2FDC602300D1D1E9 /* PostureClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = A992673A2FDC602300D1D1E9 /* PostureClassifier.mlmodel */; };
 		A9E769422FCF57C300EF4241 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9E769412FCF57C300EF4241 /* AVFoundation.framework */; };
 		A9E769442FCF57D900EF4241 /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9E769432FCF57D900EF4241 /* Vision.framework */; };
 		A9E769462FCF57E800EF4241 /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9E769452FCF57E800EF4241 /* CoreML.framework */; };
@@ -30,6 +31,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A992673A2FDC602300D1D1E9 /* PostureClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = PostureClassifier.mlmodel; sourceTree = "<group>"; };
 		A9CFA31E2FCE1FD100A2EAD0 /* PostureKit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PostureKit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9CFA32D2FCE1FD400A2EAD0 /* PostureKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostureKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9CFA3372FCE1FD400A2EAD0 /* PostureKitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostureKitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -87,6 +89,7 @@
 		A9CFA3152FCE1FD100A2EAD0 = {
 			isa = PBXGroup;
 			children = (
+				A992673A2FDC602300D1D1E9 /* PostureClassifier.mlmodel */,
 				A9CFA3202FCE1FD100A2EAD0 /* PostureKit */,
 				A9CFA3302FCE1FD400A2EAD0 /* PostureKitTests */,
 				A9CFA33A2FCE1FD400A2EAD0 /* PostureKitUITests */,
@@ -259,6 +262,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A992673B2FDC602300D1D1E9 /* PostureClassifier.mlmodel in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -435,7 +439,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = khushboo.neema.PostureKit;
+				PRODUCT_BUNDLE_IDENTIFIER = khushboo.neema.PostureKit.myapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -469,7 +473,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = khushboo.neema.PostureKit;
+				PRODUCT_BUNDLE_IDENTIFIER = khushboo.neema.PostureKit.myapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

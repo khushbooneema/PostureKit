@@ -48,6 +48,7 @@ struct AngleResult: Identifiable {
     let issues: [PostureIssue]
     let score: Int
     let cvaAngle: Double?       // nil for front/back — CVA is only measured from side view
+    let mlPrediction: MLPrediction?  // classifier opinion — nil if the model failed to load (FR-21)
 }
 
 // The four states the wizard moves through.
@@ -94,6 +95,9 @@ class PhotoCaptureViewModel: ObservableObject {
     // that makes subsequent calls faster. Do not create a new one per capture.
     private let poseDetector = PoseDetector()
     private let analyzer = PostureAnalyzer()
+    // ML classifier runs alongside the rule-based analyzer (FR-21).
+    // Reused so the compiled model is only loaded once.
+    private let mlBridge = PostureMLBridge()
 
     // MARK: - Computed results
 
@@ -164,13 +168,20 @@ class PhotoCaptureViewModel: ObservableObject {
             // return the raw score with no history to average, which is what we want here.
             let (issues, score, cvaAngle) = analyzer.analyzeOnce(pose, for: currentAngle)
 
+            // ML classifier opinion (FR-21). Runs in parallel with the rule-based
+            // checks above — neither affects the other. A tabular classifier
+            // prediction is sub-millisecond, so no need to push it off-main.
+            // nil = model unavailable; the UI just omits the ML row.
+            let mlPrediction = mlBridge.predict(pose: pose, angle: currentAngle)
+
             results.append(AngleResult(
                 angle: currentAngle,
                 image: image,
                 pose: pose,
                 issues: issues,
                 score: score,
-                cvaAngle: cvaAngle
+                cvaAngle: cvaAngle,
+                mlPrediction: mlPrediction
             ))
 
             capturedImage = nil
