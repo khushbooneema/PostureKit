@@ -42,3 +42,6 @@ The app also includes a hidden data-collection mode (long-press the step indicat
 ## Disclaimer
 
 PostureKit is a learning project, not a medical device. Results are informational and not a substitute for professional assessment.
+
+
+## Github actions for CI
