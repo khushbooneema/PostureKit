@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Show available simulators
+        run: xcrun simctl list devices available
+
+      - name: Build and run tests
+        run: |
+          xcodebuild test \
+            -scheme PostureKit \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5' \
+            -clean \
+            CODE_SIGNING_ALLOWED=NO
