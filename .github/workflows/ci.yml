@@ -22,8 +22,7 @@ jobs:
 
       - name: Build and run tests
         run: |
-            xcodebuild test \
+            xcodebuild clean test \
                 -scheme PostureKit \
                 -destination 'platform=iOS Simulator,name=iPhone 15' \
-                -clean \
                 CODE_SIGNING_ALLOWED=NO
