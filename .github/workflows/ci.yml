@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+        run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Show available simulators
         run: xcrun simctl list devices available
