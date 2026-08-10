@@ -24,6 +24,6 @@ jobs:
         run: |
             xcodebuild test \
                 -scheme PostureKit \
-                -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5' \
+                -destination 'platform=iOS Simulator,name=iPhone 15' \
                 -clean \
                 CODE_SIGNING_ALLOWED=NO
